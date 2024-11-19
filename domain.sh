@@ -138,4 +138,3 @@ chmod +x /opt/reactjs/scripts/deploy.sh
 systemctl reload caddy
 
 echo "Konfiguracja zakończona. Możesz teraz deployować na reactjs.dynapsys.com:8000"
-EOF

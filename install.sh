@@ -177,4 +177,3 @@ echo "Instalacja zakończona pomyślnie!"
 EOF
 
 chmod +x scripts/install_dependencies.sh
-EOF

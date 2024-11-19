@@ -1,6 +1,19 @@
 # reactjs
 reactjs.dynapsys.com
+Zaloguj sie na serwer
+```bash
+cd ~
+git clone https://github.com/dynapsys/reactjs.git
+cd reactjs
+```
 
+zainstaluj
+skonfiguruj domene
+```bash
+chmod +x install.sh domain.sh
+sudo ./install.sh
+sudo ./domain.sh
+```
 Kompleksowe rozwiązanie do automatycznego deploymentu aplikacji React z konfiguracją Caddy i Cloudflare.
 
 1. Najpierw należy zainstalować wszystkie zależności:
