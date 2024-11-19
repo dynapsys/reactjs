@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Better logging configuration
 - Enhanced directory permission checks
 
-## [0.1.0] - 2024-01-17
+## [0.1.0] - 2024-11-20
 
 ### Added
 - Initial release of dynapsys package
