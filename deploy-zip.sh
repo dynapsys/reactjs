@@ -10,7 +10,7 @@ source .
 #PROJECT_PATH=$1
 #DOMAIN=$2
 #CF_TOKEN=$3
-#DEPLOY_URL="http://reactjs.dynapsys.com:8000"
+#DEPLOY_URL="https://reactjs.dynapsys.com:8000"
 
 # Sprawdzenie czy katalog istnieje
 if [ ! -d "$PROJECT_PATH" ]; then

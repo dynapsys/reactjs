@@ -14,7 +14,7 @@ curl -X POST https://reactjs.dynapsys.com \
 FILE_CONTENT=$(tar czf - twoj-katalog-react | base64 -w 0)
 
 # Wysłanie żądania z zawartością pliku
-curl -X POST http://reactjs.dynapsys.com \
+curl -X POST https://reactjs.dynapsys.com \
   -H "Content-Type: application/json" \
   -d "{
     \"domain\": \"reactjs.dynapsys.com\",
@@ -37,7 +37,7 @@ chmod +x deploy-zip.sh
 2. Bezpośrednio przez curl (dla pojedynczego pliku):
 ```bash
 FILE_CONTENT=$(tar czf - ./twoj-projekt-react | base64 -w 0)
-curl -X POST http://reactjs.dynapsys.com:8000 \
+curl -X POST https://reactjs.dynapsys.com \
   -H "Content-Type: application/json" \
   -d "{
     \"domain\": \"reactjs.dynapsys.com\",
@@ -49,7 +49,7 @@ curl -X POST http://reactjs.dynapsys.com:8000 \
 3. Dla konkretnego pliku lub katalogu:
 ```bash
 # Dla pojedynczego pliku
-base64 plik.js | curl -X POST http://reactjs.dynapsys.com:8000 \
+base64 plik.js | curl -X POST https://reactjs.dynapsys.com:8000 \
   -H "Content-Type: application/json" \
   -d "{
     \"domain\": \"reactjs.dynapsys.com\",

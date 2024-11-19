@@ -10,8 +10,8 @@ chmod +x test-server.sh
 
 2. Jeśli test wykaże problemy, uruchom skrypt naprawczy:
 ```bash
-chmod +x fix.sh
-sudo ./fix.sh
+chmod +x test_python.sh
+sudo ./test_python.sh
 ```
 
 3. Możesz też ręcznie sprawdzić najważniejsze elementy:

@@ -28,7 +28,7 @@ npx create-react-app test-react
 
 2. Aby zdeployować aplikację, możesz użyć curl:
 ```bash
-curl -X POST http://localhost:8000 \
+curl -X POST https://reactjs.dynapsys.com \
   -H "Content-Type: application/json" \
   -d '{
     "domain": "react-test.dynapsys.com",
@@ -68,7 +68,7 @@ konfigurację dla domeny reactjs.dynapsys.com.
 
 
 ```bash
-curl -X POST http://reactjs.dynapsys.com:8000 \
+curl -X POST https://reactjs.dynapsys.com:8000 \
   -H "Content-Type: application/json" \
   -d '{
     "domain": "reactjs.dynapsys.com",
@@ -76,4 +76,59 @@ curl -X POST http://reactjs.dynapsys.com:8000 \
     "source": "url-do-twojego-repo-git"
   }'
 ```
+
+
+
+
+## Deploy na kilka sposobów
+
+
+1. Z repozytorium Git:
+```bash
+curl -X POST https://reactjs.dynapsys.com \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "reactjs.dynapsys.com",
+    "cf_token": "your-cloudflare-token",
+    "source": "https://github.com/user/react-project.git"
+  }'
+```
+
+2. Z lokalnego projektu:
+```bash
+# Najpierw spakuj i zakoduj projekt
+PROJECT_BASE64=$(tar czf - ./my-react-app | base64 -w 0)
+
+curl -X POST https://reactjs.dynapsys.com \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"domain\": \"reactjs.dynapsys.com\",
+    \"cf_token\": \"your-cloudflare-token\",
+    \"source\": \"data:application/tar+gz;base64,$PROJECT_BASE64\"
+  }"
+```
+
+Główne zmiany i funkcje:
+
+1. Pełna obsługa repozytoriów Git:
+    - Klonowanie repo
+    - Walidacja URL Git
+    - Obsługa GitHub, GitLab, Bitbucket
+
+2. Proces deploymentu:
+    - Klonowanie/rozpakowanie kodu
+    - Instalacja zależności npm
+    - Build projektu React
+    - Konfiguracja PM2
+    - Aktualizacja DNS w Cloudflare
+
+3. Obsługa błędów i logowanie:
+    - Szczegółowe logi
+    - Obsługa wyjątków
+    - Walidacja parametrów
+
+4. Zarządzanie procesami:
+    - Automatyczne zarządzanie PM2
+    - Czyszczenie starych instancji
+    - Zachowanie konfiguracji
 
