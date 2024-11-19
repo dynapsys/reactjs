@@ -93,7 +93,7 @@ The package uses environment variables for configuration:
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the Apache 2 License - see the LICENSE file for details.
 
 ## Changelog
 
