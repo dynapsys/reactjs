@@ -12,11 +12,12 @@ import re
 import logging
 import sys
 from datetime import datetime
+import traceback
 
 # Konfiguracja logowania
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG,  # Zmieniono na DEBUG dla bardziej szczegółowych logów
+    format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
     handlers=[
         logging.FileHandler('/opt/reactjs/logs/deployment.log'),
         logging.StreamHandler(sys.stdout)
@@ -24,32 +25,91 @@ logging.basicConfig(
 )
 
 class DeploymentHandler(BaseHTTPRequestHandler):
+    def send_json_response(self, status_code, data):
+        """Wysyła odpowiedź JSON"""
+        self.send_response(status_code)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        response = json.dumps(data, indent=2).encode('utf-8')
+        self.wfile.write(response)
+
+    def check_git_installation(self):
+        """Sprawdza czy git jest zainstalowany i dostępny"""
+        try:
+            version = subprocess.check_output(['git', '--version']).decode().strip()
+            logging.info(f"Git version: {version}")
+            return True
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Git not found: {str(e)}")
+            return False
+        except FileNotFoundError:
+            logging.error("Git command not found")
+            return False
+
     def clone_git_repo(self, git_url, target_dir):
         """Klonuje repozytorium git do wskazanego katalogu"""
         try:
-            logging.info(f"Rozpoczynam klonowanie repo: {git_url} do {target_dir}")
+            # Sprawdź instalację git
+            if not self.check_git_installation():
+                raise Exception("Git is not installed")
 
+            logging.info(f"Starting git clone: {git_url} -> {target_dir}")
+
+            # Upewnij się, że katalog docelowy jest pusty
             if os.path.exists(target_dir):
-                logging.info(f"Usuwanie istniejącego katalogu: {target_dir}")
-                shutil.rmtree(target_dir)
+                logging.info(f"Removing existing directory: {target_dir}")
+                subprocess.run(['rm', '-rf', target_dir], check=True)
 
-            # Klonowanie repozytorium z wyświetlaniem output
+            # Tworzenie katalogu nadrzędnego
+            os.makedirs(os.path.dirname(target_dir), exist_ok=True)
+
+            # Sprawdź uprawnienia do katalogu
+            parent_dir = os.path.dirname(target_dir)
+            logging.info(f"Checking permissions for {parent_dir}")
+            if not os.access(parent_dir, os.W_OK):
+                logging.error(f"No write permission to {parent_dir}")
+                raise Exception(f"No write permission to {parent_dir}")
+
+            # Klonowanie z pełnym logowaniem
+            logging.info(f"Executing git clone {git_url}")
             process = subprocess.Popen(
                 ['git', 'clone', git_url, target_dir],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                stderr=subprocess.PIPE,
+                universal_newlines=True
             )
-            stdout, stderr = process.communicate()
 
-            if process.returncode == 0:
-                logging.info("Git clone zakończony sukcesem")
-                return True
-            else:
-                logging.error(f"Błąd git clone: {stderr.decode()}")
-                return False
+            # Czytanie output w czasie rzeczywistym
+            while True:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    logging.info(f"Git output: {output.strip()}")
+
+            # Pobierz stderr po zakończeniu
+            _, stderr = process.communicate()
+            if stderr:
+                logging.error(f"Git stderr: {stderr}")
+
+            # Sprawdź kod wyjścia
+            if process.returncode != 0:
+                raise subprocess.CalledProcessError(process.returncode, 'git clone')
+
+            # Sprawdź czy katalog został utworzony i zawiera pliki
+            if not os.path.exists(target_dir) or not os.listdir(target_dir):
+                raise Exception("Git clone completed but directory is empty")
+
+            # Wyświetl zawartość sklonowanego repozytorium
+            logging.info(f"Repository contents: {os.listdir(target_dir)}")
+
+            return True
 
         except subprocess.CalledProcessError as e:
-            logging.error(f"Git clone error: {str(e)}\n{traceback.format_exc()}")
+            logging.error(f"Git clone failed: {str(e)}\nCommand output: {e.output if hasattr(e, 'output') else 'No output'}")
+            return False
+        except Exception as e:
+            logging.error(f"Error during git clone: {str(e)}\n{traceback.format_exc()}")
             return False
 
     def build_react_project(self, project_dir):
@@ -102,6 +162,14 @@ class DeploymentHandler(BaseHTTPRequestHandler):
         try:
             logging.info(f"Aktualizacja DNS dla domeny: {domain}")
 
+            # Wyciągnij główną domenę
+            domain_parts = domain.split('.')
+            if len(domain_parts) > 2:
+                main_domain = '.'.join(domain_parts[-2:])
+                logging.info(f"Subdomena wykryta. Główna domena: {main_domain}")
+            else:
+                main_domain = domain
+
             # Pobierz publiczny IP serwera
             ip_process = subprocess.Popen(
                 ['curl', '-s', 'http://ipv4.icanhazip.com'],
@@ -109,15 +177,19 @@ class DeploymentHandler(BaseHTTPRequestHandler):
                 stderr=subprocess.PIPE
             )
             ip_stdout, ip_stderr = ip_process.communicate()
-            ip = ip_stdout.decode().strip()
 
+            if ip_process.returncode != 0:
+                logging.error(f"Błąd pobierania IP: {ip_stderr.decode()}")
+                return False
+
+            ip = ip_stdout.decode().strip()
             logging.info(f"Pobrano IP: {ip}")
 
             # Pobierz Zone ID
-            logging.info("Pobieranie Zone ID z Cloudflare...")
+            logging.info(f"Pobieranie Zone ID z Cloudflare dla domeny: {main_domain}")
             zone_cmd = [
                 'curl', '-s', '-X', 'GET',
-                f'https://api.cloudflare.com/client/v4/zones?name={domain}',
+                f'https://api.cloudflare.com/client/v4/zones?name={main_domain}',
                 '-H', f'Authorization: Bearer {cf_token}',
                 '-H', 'Content-Type: application/json'
             ]
@@ -126,43 +198,98 @@ class DeploymentHandler(BaseHTTPRequestHandler):
 
             try:
                 zone_response = json.loads(zone_stdout.decode())
+
+                if not zone_response.get('success', False):
+                    errors = zone_response.get('errors', [])
+                    logging.error(f"Błąd API Cloudflare: {errors}")
+                    return False
+
+                if not zone_response.get('result', []):
+                    logging.error(f"Nie znaleziono domeny {main_domain} w Cloudflare")
+                    return False
+
                 zone_id = zone_response['result'][0]['id']
                 logging.info(f"Pobrano Zone ID: {zone_id}")
-            except (json.JSONDecodeError, IndexError, KeyError) as e:
-                logging.error(f"Błąd pobierania Zone ID: {str(e)}\nResponse: {zone_stdout.decode()}")
-                return False
 
-            # Aktualizuj rekord A
-            logging.info("Aktualizacja rekordu A...")
-            dns_data = {
-                'type': 'A',
-                'name': domain,
-                'content': ip,
-                'ttl': 1,
-                'proxied': True
-            }
+                # Sprawdź istniejące rekordy DNS
+                existing_record_cmd = [
+                    'curl', '-s', '-X', 'GET',
+                    f'https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?type=A&name={domain}',
+                    '-H', f'Authorization: Bearer {cf_token}',
+                    '-H', 'Content-Type: application/json'
+                ]
 
-            dns_cmd = [
-                'curl', '-s', '-X', 'POST',
-                f'https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records',
-                '-H', f'Authorization: Bearer {cf_token}',
-                '-H', 'Content-Type: application/json',
-                '-d', json.dumps(dns_data)
-            ]
+                record_process = subprocess.Popen(existing_record_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                record_stdout, record_stderr = record_process.communicate()
+                record_response = json.loads(record_stdout.decode())
 
-            dns_process = subprocess.Popen(dns_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            dns_stdout, dns_stderr = dns_process.communicate()
+                dns_data = {
+                    'type': 'A',
+                    'name': domain,
+                    'content': ip,
+                    'ttl': 1,
+                    'proxied': True
+                }
 
-            if dns_process.returncode == 0:
+                if record_response.get('result', []):
+                    # Aktualizuj istniejący rekord
+                    record_id = record_response['result'][0]['id']
+                    logging.info(f"Znaleziono istniejący rekord DNS {record_id}, aktualizacja...")
+
+                    update_cmd = [
+                        'curl', '-s', '-X', 'PUT',
+                        f'https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{record_id}',
+                        '-H', f'Authorization: Bearer {cf_token}',
+                        '-H', 'Content-Type: application/json',
+                        '-d', json.dumps(dns_data)
+                    ]
+
+                    update_process = subprocess.Popen(update_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    update_stdout, update_stderr = update_process.communicate()
+                    update_response = json.loads(update_stdout.decode())
+
+                    if not update_response.get('success', False):
+                        logging.error(f"Błąd aktualizacji rekordu DNS: {update_response.get('errors', [])}")
+                        return False
+                else:
+                    # Utwórz nowy rekord
+                    logging.info("Tworzenie nowego rekordu DNS...")
+                    create_cmd = [
+                        'curl', '-s', '-X', 'POST',
+                        f'https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records',
+                        '-H', f'Authorization: Bearer {cf_token}',
+                        '-H', 'Content-Type: application/json',
+                        '-d', json.dumps(dns_data)
+                    ]
+
+                    create_process = subprocess.Popen(create_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    create_stdout, create_stderr = create_process.communicate()
+                    create_response = json.loads(create_stdout.decode())
+
+                    if not create_response.get('success', False):
+                        logging.error(f"Błąd tworzenia rekordu DNS: {create_response.get('errors', [])}")
+                        return False
+
                 logging.info("DNS zaktualizowany pomyślnie")
                 return True
-            else:
-                logging.error(f"Błąd aktualizacji DNS: {dns_stderr.decode()}")
+
+            except json.JSONDecodeError as e:
+                logging.error(f"Błąd parsowania odpowiedzi JSON: {str(e)}\nResponse: {zone_stdout.decode()}")
+                return False
+            except (IndexError, KeyError) as e:
+                logging.error(f"Błąd w strukturze odpowiedzi: {str(e)}\nResponse: {zone_stdout.decode()}")
+                return False
+            except Exception as e:
+                logging.error(f"Nieoczekiwany błąd: {str(e)}\n{traceback.format_exc()}")
                 return False
 
         except Exception as e:
             logging.error(f"Cloudflare DNS update error: {str(e)}\n{traceback.format_exc()}")
             return False
+
+        finally:
+            logging.info("Zakończono proces aktualizacji DNS")
+
 
     def setup_pm2(self, domain, project_dir):
         """Konfiguruje PM2 dla aplikacji"""
@@ -221,30 +348,24 @@ class DeploymentHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
-            logging.info(f"Otrzymano żądanie POST od {self.client_address[0]}")
-
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length == 0:
-                logging.error("Otrzymano puste żądanie")
-                self.send_error(400, "Empty request")
+                self.send_json_response(400, {"error": "Empty request"})
                 return
 
             post_data = self.rfile.read(content_length).decode('utf-8')
+            logging.info(f"Received POST data: {post_data}")
 
             try:
                 params = json.loads(post_data)
-                logging.info(f"Otrzymane parametry: {json.dumps(params, indent=2)}")
             except json.JSONDecodeError as e:
-                logging.error(f"Błąd parsowania JSON: {str(e)}\nDane: {post_data}")
-                self.send_error(400, f"Invalid JSON: {str(e)}")
+                logging.error(f"JSON parse error: {str(e)}")
+                self.send_json_response(400, {"error": f"Invalid JSON: {str(e)}"})
                 return
 
-            # Sprawdzenie wymaganych parametrów
-            required_params = ['domain', 'cf_token', 'source']
-            missing_params = [param for param in required_params if param not in params]
-            if missing_params:
-                logging.error(f"Brak wymaganych parametrów: {missing_params}")
-                self.send_error(400, f"Missing required parameters: {', '.join(missing_params)}")
+            # Sprawdzenie wymaganych pól
+            if not all(key in params for key in ['domain', 'cf_token', 'source']):
+                self.send_json_response(400, {"error": "Missing required fields"})
                 return
 
             domain = params['domain']
@@ -302,42 +423,45 @@ class DeploymentHandler(BaseHTTPRequestHandler):
                 return
 
             # Sukces
-            response = {
+            self.send_json_response(200, {
                 "status": "success",
                 "message": "Deployment completed successfully",
                 "domain": domain,
                 "project_dir": project_dir,
                 "timestamp": datetime.now().isoformat()
-            }
-
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps(response, indent=2).encode())
-
-            logging.info(f"Deployment zakończony sukcesem: {json.dumps(response, indent=2)}")
+            })
 
         except Exception as e:
-            error_msg = f"Błąd deploymentu: {str(e)}\n{traceback.format_exc()}"
-            logging.error(error_msg)
-            self.send_error(500, error_msg)
+            logging.error(f"Server error: {str(e)}\n{traceback.format_exc()}")
+            self.send_json_response(500, {
+                "error": "Server error",
+                "details": str(e)
+            })
 
-def run_server():
+def run_server(port=8000):
     try:
-        server_address = ('0.0.0.0', 8000)
+        server_address = ('', port)
         httpd = HTTPServer(server_address, DeploymentHandler)
-        logging.info("Uruchamianie serwera deploymentu na porcie 8000...")
-        print("Deployment server running on port 8000...")
+        logging.info(f'Starting deployment server on port {port}...')
         httpd.serve_forever()
     except Exception as e:
-        logging.error(f"Błąd uruchomienia serwera: {str(e)}\n{traceback.format_exc()}")
+        logging.error(f"Server error: {str(e)}\n{traceback.format_exc()}")
         sys.exit(1)
 
-if __name__ == "__main__":
-    # Upewnij się, że katalog logów istnieje
+if __name__ == '__main__':
+    # Upewnij się, że katalogi istnieją
     os.makedirs('/opt/reactjs/logs', exist_ok=True)
+    os.makedirs('/opt/reactjs/sites', exist_ok=True)
+
+    # Sprawdź uprawnienia
+    for dir_path in ['/opt/reactjs/logs', '/opt/reactjs/sites']:
+        if not os.access(dir_path, os.W_OK):
+            print(f"Warning: No write permission to {dir_path}")
+
     run_server()
 
 # systemctl status reactjs --no-pager
 # systemctl restart reactjs
 # systemctl status reactjs --no-pager
+# lsof -t -i tcp:8000 | xargs kill -9
+

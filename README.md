@@ -31,9 +31,9 @@ npx create-react-app test-react
 curl -X POST https://reactjs.dynapsys.com \
   -H "Content-Type: application/json" \
   -d '{
-    "domain": "react-test.dynapsys.com",
+    "domain": "reactjs-test.dynapsys.com",
     "cf_token": "twoj-cloudflare-token",
-    "source": "https://github.com/dynapsys/react-test.git"
+    "source": "https://github.com/dynapsys/reactjs-test.git"
   }'
 ```
 

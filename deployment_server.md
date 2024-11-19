@@ -7,6 +7,9 @@ sudo chmod +x /opt/reactjs/deployment_server.py
 # Service manager
 chmod +x deployment-service-manager.sh
 sudo ./deployment-service-manager.sh
+
+echo "Restart usługi reactjs..."
+sudo systemctl restart reactjs
 ```
 
 2. Testowanie:
@@ -20,7 +23,7 @@ curl -X POST http://localhost:8000 \
 curl -X POST http://localhost:8000 \
   -H "Content-Type: application/json" \
   -d '{
-    "domain": "react-test.dynapsys.com",
+    "domain": "reactjs-test.dynapsys.com",
     "cf_token": "test-token",
     "source": "https://github.com/username/repo.git"
   }'
