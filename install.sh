@@ -4,7 +4,7 @@
 mkdir -p /opt/reactjs/{scripts,sites,logs}
 cd /opt/reactjs
 
-# Główny skrypt deploymentu (deploy.sh)
+# Główny skrypt deploymentu (deploy-zip.sh)
 cat > scripts/deploy.sh << 'EOF'
 #!/bin/bash
 
@@ -176,4 +176,6 @@ systemctl start reactjs
 echo "Instalacja zakończona pomyślnie!"
 EOF
 
-chmod +x scripts/install_dependencies.sh
+chmod +x /opt/reactjs/scripts/install_dependencies.sh
+chmod +x /opt/reactjs/scripts/deploy.sh
+ls -la /opt/reactjs/*

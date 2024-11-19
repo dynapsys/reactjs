@@ -18,17 +18,22 @@ Kompleksowe rozwiązanie do automatycznego deploymentu aplikacji React z konfigu
 
 1. Najpierw należy zainstalować wszystkie zależności:
 ```bash
-sudo ./scripts/install_dependencies.sh
+chmod +x /opt/reactjs/scripts/install_dependencies.sh
+/opt/reactjs/scripts/install_dependencies.sh
 ```
+
+```bash
+npx create-react-app test-react
+```        
 
 2. Aby zdeployować aplikację, możesz użyć curl:
 ```bash
-curl -X POST http://your-server:8000 \
+curl -X POST http://localhost:8000 \
   -H "Content-Type: application/json" \
   -d '{
-    "domain": "twoja-domena.com",
+    "domain": "react-test.dynapsys.com",
     "cf_token": "twoj-cloudflare-token",
-    "source": "https://github.com/user/repo.git"
+    "source": "https://github.com/dynapsys/react-test.git"
   }'
 ```
 
