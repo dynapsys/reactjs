@@ -1,134 +1,104 @@
-# reactjs
-reactjs.dynapsys.com
-Zaloguj sie na serwer
+# DynaPsys
+
+DynaPsys is a comprehensive Python package for automated deployment and management of web applications, with a focus on React applications. It provides tools for deployment automation, DNS management through Cloudflare, and process management using PM2.
+
+## Features
+
+- Automated deployment server for web applications
+- Cloudflare DNS management integration
+- Git repository support
+- PM2 process management
+- Base64 deployment support
+- Comprehensive logging system
+
+## Installation
+
 ```bash
-cd ~
-git clone https://github.com/dynapsys/reactjs.git
-cd reactjs
+pip install dynapsys
 ```
 
-zainstaluj
-skonfiguruj domene
-```bash
-chmod +x install.sh domain.sh
-sudo ./install.sh
-sudo ./domain.sh
+## Usage
+
+### Starting the Deployment Server
+
+```python
+from dynapsys.deployment import run_server
+
+# Start the server on port 8000 (default)
+run_server()
+
+# Or specify a custom port
+run_server(port=8080)
 ```
-Kompleksowe rozwiązanie do automatycznego deploymentu aplikacji React z konfiguracją Caddy i Cloudflare.
 
-1. Najpierw należy zainstalować wszystkie zależności:
-```bash
-chmod +x /opt/reactjs/scripts/install_dependencies.sh
-/opt/reactjs/scripts/install_dependencies.sh
-```
+### Deploying an Application
+
+Send a POST request to the deployment server:
 
 ```bash
-npx create-react-app test-react
-```        
-
-2. Aby zdeployować aplikację, możesz użyć curl:
-```bash
-curl -X POST https://reactjs.dynapsys.com \
+curl -X POST http://localhost:8000 \
   -H "Content-Type: application/json" \
   -d '{
-    "domain": "reactjs-test.dynapsys.com",
-    "cf_token": "twoj-cloudflare-token",
-    "source": "https://github.com/dynapsys/reactjs-test.git"
-  }'
-```
-
-Rozwiązanie zawiera:
-
-1. Serwer HTTP na porcie 8000 obsługujący żądania deploymentu
-2. Automatyczną konfigurację Caddy jako serwera proxy
-3. Integrację z Cloudflare API do zarządzania DNS
-4. Automatyczny build aplikacji React
-5. System logowania
-6. Zabezpieczenia i optymalizacje serwera
-
-Główne funkcje:
-- Obsługa deploymentu z Git URL lub lokalnych plików
-- Automatyczna konfiguracja HTTPS przez Caddy
-- Automatyczna konfiguracja DNS w Cloudflare
-- Kompresja Gzip
-- Podstawowe nagłówki bezpieczeństwa
-- Logi w formacie JSON
-
-
-## deployment dla domeny reactjs.dynapsys.com na porcie 8000.
-
-konfigurację dla domeny reactjs.dynapsys.com.
-
-1. Dodanie dedykowanej konfiguracji Caddy dla reactjs.dynapsys.com
-2. Skonfigurowanie reverse proxy dla portu 8000
-3. Dodanie zarządzania procesami Node.js przez PM2
-4. Obsługa CORS i nagłówków bezpieczeństwa
-5. Automatyczna konfiguracja SSL przez Caddy
-6. Logowanie w formacie JSON
-
-
-```bash
-curl -X POST https://reactjs.dynapsys.com:8000 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "domain": "reactjs.dynapsys.com",
-    "cf_token": "twoj-cloudflare-token",
-    "source": "url-do-twojego-repo-git"
-  }'
-```
-
-
-
-
-## Deploy na kilka sposobów
-
-
-1. Z repozytorium Git:
-```bash
-curl -X POST https://reactjs.dynapsys.com \
-  -H "Content-Type: application/json" \
-  -d '{
-    "domain": "reactjs.dynapsys.com",
+    "domain": "your-domain.com",
     "cf_token": "your-cloudflare-token",
-    "source": "https://github.com/user/react-project.git"
+    "source": "https://github.com/username/repo.git"
   }'
 ```
 
-2. Z lokalnego projektu:
-```bash
-# Najpierw spakuj i zakoduj projekt
-PROJECT_BASE64=$(tar czf - ./my-react-app | base64 -w 0)
+### Using Individual Components
 
-curl -X POST https://reactjs.dynapsys.com \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"domain\": \"reactjs.dynapsys.com\",
-    \"cf_token\": \"your-cloudflare-token\",
-    \"source\": \"data:application/tar+gz;base64,$PROJECT_BASE64\"
-  }"
+#### Git Operations
+
+```python
+from dynapsys.git import clone_git_repo, is_valid_git_url
+
+# Validate Git URL
+if is_valid_git_url("https://github.com/username/repo.git"):
+    # Clone repository
+    clone_git_repo("https://github.com/username/repo.git", "/path/to/target")
 ```
 
-Główne zmiany i funkcje:
+#### DNS Management
 
-1. Pełna obsługa repozytoriów Git:
-    - Klonowanie repo
-    - Walidacja URL Git
-    - Obsługa GitHub, GitLab, Bitbucket
+```python
+from dynapsys.dns import update_cloudflare_dns
 
-2. Proces deploymentu:
-    - Klonowanie/rozpakowanie kodu
-    - Instalacja zależności npm
-    - Build projektu React
-    - Konfiguracja PM2
-    - Aktualizacja DNS w Cloudflare
+# Update DNS records
+update_cloudflare_dns("your-domain.com", "your-cloudflare-token")
+```
 
-3. Obsługa błędów i logowanie:
-    - Szczegółowe logi
-    - Obsługa wyjątków
-    - Walidacja parametrów
+## Requirements
 
-4. Zarządzanie procesami:
-    - Automatyczne zarządzanie PM2
-    - Czyszczenie starych instancji
-    - Zachowanie konfiguracji
+- Python 3.6+
+- Git
+- Node.js and npm (for React applications)
+- PM2 (for process management)
+- Cloudflare API token (for DNS management)
 
+## Configuration
+
+The package uses environment variables for configuration:
+
+- `DYNAPSYS_LOG_LEVEL`: Logging level (default: DEBUG)
+- `DYNAPSYS_LOG_FILE`: Path to log file (default: deployment.log)
+- `DYNAPSYS_SITES_DIR`: Directory for deployed sites (default: /opt/reactjs/sites)
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a list of changes.
+
+## Todo
+
+See [TODO.md](TODO.md) for planned features and improvements.

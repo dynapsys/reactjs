@@ -1,0 +1,18 @@
+# HTTP and API
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Process management
+psutil>=5.9.0
+
+# CLI tools
+click>=8.1.0
+
+# Utilities
+python-dotenv>=1.0.0
+
+# Logging
+structlog>=23.1.0
+
+# Type hints
+typing-extensions>=4.7.0; python_version < '3.8'
