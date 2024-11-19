@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Struktura katalogów
-mkdir -p /opt/deployment-service/{scripts,sites,logs}
-cd /opt/deployment-service
+mkdir -p /opt/reactjs/{scripts,sites,logs}
+cd /opt/reactjs
 
 # Główny skrypt deploymentu (deploy.sh)
 cat > scripts/deploy.sh << 'EOF'
@@ -17,8 +17,8 @@ fi
 DOMAIN=$1
 CF_TOKEN=$2
 SOURCE=$3
-DEPLOY_DIR="/opt/deployment-service/sites/${DOMAIN}"
-LOG_FILE="/opt/deployment-service/logs/${DOMAIN}.log"
+DEPLOY_DIR="/opt/reactjs/sites/${DOMAIN}"
+LOG_FILE="/opt/reactjs/logs/${DOMAIN}.log"
 
 # Funkcja logowania
 log() {
@@ -114,7 +114,7 @@ apt install -y nodejs npm jq curl git
 ufw allow 80,443/tcp
 
 # Utworzenie usługi systemd
-cat > /etc/systemd/system/deployment-service.service << 'SERVICEEOF'
+cat > /etc/systemd/system/reactjs.service << 'SERVICEEOF'
 [Unit]
 Description=React Deployment Service
 After=network.target
@@ -122,8 +122,8 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/deployment-service
-ExecStart=/usr/bin/python3 /opt/deployment-service/deployment_server.py
+WorkingDirectory=/opt/reactjs
+ExecStart=/usr/bin/python3 /opt/reactjs/deployment_server.py
 Restart=always
 
 [Install]
@@ -131,7 +131,7 @@ WantedBy=multi-user.target
 SERVICEEOF
 
 # Serwer deploymentu (deployment_server.py)
-cat > /opt/deployment-service/deployment_server.py << 'PYTHONEOF'
+cat > /opt/reactjs/deployment_server.py << 'PYTHONEOF'
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import subprocess
@@ -151,7 +151,7 @@ class DeploymentHandler(BaseHTTPRequestHandler):
 
         try:
             subprocess.run([
-                '/opt/deployment-service/scripts/deploy.sh',
+                '/opt/reactjs/scripts/deploy.sh',
                 params['domain'],
                 params['cf_token'],
                 params['source']
@@ -170,8 +170,8 @@ httpd.serve_forever()
 PYTHONEOF
 
 # Aktywacja i start usługi
-systemctl enable deployment-service
-systemctl start deployment-service
+systemctl enable reactjs
+systemctl start reactjs
 
 echo "Instalacja zakończona pomyślnie!"
 EOF
