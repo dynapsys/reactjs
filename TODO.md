@@ -1,0 +1,1 @@
+- stworz paczkę Python dla dynapsys

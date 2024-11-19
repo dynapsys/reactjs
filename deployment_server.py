@@ -5,7 +5,9 @@ import subprocess
 import os
 import base64
 import tempfile
-import traceback
+import update_cloudflare_dns
+import clone_git_repo
+import is_valid_git_url
 import shutil
 from urllib.parse import urlparse
 import re
@@ -44,72 +46,6 @@ class DeploymentHandler(BaseHTTPRequestHandler):
             return False
         except FileNotFoundError:
             logging.error("Git command not found")
-            return False
-
-    def clone_git_repo(self, git_url, target_dir):
-        """Klonuje repozytorium git do wskazanego katalogu"""
-        try:
-            # Sprawdź instalację git
-            if not self.check_git_installation():
-                raise Exception("Git is not installed")
-
-            logging.info(f"Starting git clone: {git_url} -> {target_dir}")
-
-            # Upewnij się, że katalog docelowy jest pusty
-            if os.path.exists(target_dir):
-                logging.info(f"Removing existing directory: {target_dir}")
-                subprocess.run(['rm', '-rf', target_dir], check=True)
-
-            # Tworzenie katalogu nadrzędnego
-            os.makedirs(os.path.dirname(target_dir), exist_ok=True)
-
-            # Sprawdź uprawnienia do katalogu
-            parent_dir = os.path.dirname(target_dir)
-            logging.info(f"Checking permissions for {parent_dir}")
-            if not os.access(parent_dir, os.W_OK):
-                logging.error(f"No write permission to {parent_dir}")
-                raise Exception(f"No write permission to {parent_dir}")
-
-            # Klonowanie z pełnym logowaniem
-            logging.info(f"Executing git clone {git_url}")
-            process = subprocess.Popen(
-                ['git', 'clone', git_url, target_dir],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True
-            )
-
-            # Czytanie output w czasie rzeczywistym
-            while True:
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    logging.info(f"Git output: {output.strip()}")
-
-            # Pobierz stderr po zakończeniu
-            _, stderr = process.communicate()
-            if stderr:
-                logging.error(f"Git stderr: {stderr}")
-
-            # Sprawdź kod wyjścia
-            if process.returncode != 0:
-                raise subprocess.CalledProcessError(process.returncode, 'git clone')
-
-            # Sprawdź czy katalog został utworzony i zawiera pliki
-            if not os.path.exists(target_dir) or not os.listdir(target_dir):
-                raise Exception("Git clone completed but directory is empty")
-
-            # Wyświetl zawartość sklonowanego repozytorium
-            logging.info(f"Repository contents: {os.listdir(target_dir)}")
-
-            return True
-
-        except subprocess.CalledProcessError as e:
-            logging.error(f"Git clone failed: {str(e)}\nCommand output: {e.output if hasattr(e, 'output') else 'No output'}")
-            return False
-        except Exception as e:
-            logging.error(f"Error during git clone: {str(e)}\n{traceback.format_exc()}")
             return False
 
     def build_react_project(self, project_dir):
@@ -157,138 +93,6 @@ class DeploymentHandler(BaseHTTPRequestHandler):
             logging.error(f"Build error: {str(e)}\n{traceback.format_exc()}")
             return False
 
-    def update_cloudflare_dns(self, domain, cf_token):
-        """Aktualizuje DNS w Cloudflare"""
-        try:
-            logging.info(f"Aktualizacja DNS dla domeny: {domain}")
-
-            # Wyciągnij główną domenę
-            domain_parts = domain.split('.')
-            if len(domain_parts) > 2:
-                main_domain = '.'.join(domain_parts[-2:])
-                logging.info(f"Subdomena wykryta. Główna domena: {main_domain}")
-            else:
-                main_domain = domain
-
-            # Pobierz publiczny IP serwera
-            ip_process = subprocess.Popen(
-                ['curl', '-s', 'http://ipv4.icanhazip.com'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
-            )
-            ip_stdout, ip_stderr = ip_process.communicate()
-
-            if ip_process.returncode != 0:
-                logging.error(f"Błąd pobierania IP: {ip_stderr.decode()}")
-                return False
-
-            ip = ip_stdout.decode().strip()
-            logging.info(f"Pobrano IP: {ip}")
-
-            # Pobierz Zone ID
-            logging.info(f"Pobieranie Zone ID z Cloudflare dla domeny: {main_domain}")
-            zone_cmd = [
-                'curl', '-s', '-X', 'GET',
-                f'https://api.cloudflare.com/client/v4/zones?name={main_domain}',
-                '-H', f'Authorization: Bearer {cf_token}',
-                '-H', 'Content-Type: application/json'
-            ]
-            zone_process = subprocess.Popen(zone_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            zone_stdout, zone_stderr = zone_process.communicate()
-
-            try:
-                zone_response = json.loads(zone_stdout.decode())
-
-                if not zone_response.get('success', False):
-                    errors = zone_response.get('errors', [])
-                    logging.error(f"Błąd API Cloudflare: {errors}")
-                    return False
-
-                if not zone_response.get('result', []):
-                    logging.error(f"Nie znaleziono domeny {main_domain} w Cloudflare")
-                    return False
-
-                zone_id = zone_response['result'][0]['id']
-                logging.info(f"Pobrano Zone ID: {zone_id}")
-
-                # Sprawdź istniejące rekordy DNS
-                existing_record_cmd = [
-                    'curl', '-s', '-X', 'GET',
-                    f'https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?type=A&name={domain}',
-                    '-H', f'Authorization: Bearer {cf_token}',
-                    '-H', 'Content-Type: application/json'
-                ]
-
-                record_process = subprocess.Popen(existing_record_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                record_stdout, record_stderr = record_process.communicate()
-                record_response = json.loads(record_stdout.decode())
-
-                dns_data = {
-                    'type': 'A',
-                    'name': domain,
-                    'content': ip,
-                    'ttl': 1,
-                    'proxied': True
-                }
-
-                if record_response.get('result', []):
-                    # Aktualizuj istniejący rekord
-                    record_id = record_response['result'][0]['id']
-                    logging.info(f"Znaleziono istniejący rekord DNS {record_id}, aktualizacja...")
-
-                    update_cmd = [
-                        'curl', '-s', '-X', 'PUT',
-                        f'https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{record_id}',
-                        '-H', f'Authorization: Bearer {cf_token}',
-                        '-H', 'Content-Type: application/json',
-                        '-d', json.dumps(dns_data)
-                    ]
-
-                    update_process = subprocess.Popen(update_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    update_stdout, update_stderr = update_process.communicate()
-                    update_response = json.loads(update_stdout.decode())
-
-                    if not update_response.get('success', False):
-                        logging.error(f"Błąd aktualizacji rekordu DNS: {update_response.get('errors', [])}")
-                        return False
-                else:
-                    # Utwórz nowy rekord
-                    logging.info("Tworzenie nowego rekordu DNS...")
-                    create_cmd = [
-                        'curl', '-s', '-X', 'POST',
-                        f'https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records',
-                        '-H', f'Authorization: Bearer {cf_token}',
-                        '-H', 'Content-Type: application/json',
-                        '-d', json.dumps(dns_data)
-                    ]
-
-                    create_process = subprocess.Popen(create_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    create_stdout, create_stderr = create_process.communicate()
-                    create_response = json.loads(create_stdout.decode())
-
-                    if not create_response.get('success', False):
-                        logging.error(f"Błąd tworzenia rekordu DNS: {create_response.get('errors', [])}")
-                        return False
-
-                logging.info("DNS zaktualizowany pomyślnie")
-                return True
-
-            except json.JSONDecodeError as e:
-                logging.error(f"Błąd parsowania odpowiedzi JSON: {str(e)}\nResponse: {zone_stdout.decode()}")
-                return False
-            except (IndexError, KeyError) as e:
-                logging.error(f"Błąd w strukturze odpowiedzi: {str(e)}\nResponse: {zone_stdout.decode()}")
-                return False
-            except Exception as e:
-                logging.error(f"Nieoczekiwany błąd: {str(e)}\n{traceback.format_exc()}")
-                return False
-
-        except Exception as e:
-            logging.error(f"Cloudflare DNS update error: {str(e)}\n{traceback.format_exc()}")
-            return False
-
-        finally:
-            logging.info("Zakończono proces aktualizacji DNS")
 
 
     def setup_pm2(self, domain, project_dir):
@@ -334,17 +138,6 @@ class DeploymentHandler(BaseHTTPRequestHandler):
             logging.error(f"PM2 setup error: {str(e)}\n{traceback.format_exc()}")
             return False
 
-    def is_valid_git_url(self, url):
-        """Sprawdza czy URL jest poprawnym adresem Git"""
-        git_patterns = [
-            r'^https?://github\.com/[\w-]+/[\w.-]+(?:\.git)?$',
-            r'^git@github\.com:[\w-]+/[\w.-]+(?:\.git)?$',
-            r'^https?://gitlab\.com/[\w-]+/[\w.-]+(?:\.git)?$',
-            r'^https?://bitbucket\.org/[\w-]+/[\w.-]+(?:\.git)?$'
-        ]
-        is_valid = any(re.match(pattern, url) for pattern in git_patterns)
-        logging.info(f"Sprawdzanie URL git: {url} - {'poprawny' if is_valid else 'niepoprawny'}")
-        return is_valid
 
     def do_POST(self):
         try:
@@ -378,7 +171,7 @@ class DeploymentHandler(BaseHTTPRequestHandler):
 
             # Obsługa różnych typów źródeł
             if self.is_valid_git_url(source):
-                if not self.clone_git_repo(source, project_dir):
+                if not clone_git_repo(source, project_dir):
                     self.send_error(500, "Git clone failed")
                     return
             elif source.startswith('data:application/tar+gz;base64,'):
@@ -413,7 +206,7 @@ class DeploymentHandler(BaseHTTPRequestHandler):
                 return
 
             # Konfiguracja DNS
-            if not self.update_cloudflare_dns(domain, cf_token):
+            if not update_cloudflare_dns(domain, cf_token):
                 self.send_error(500, "DNS update failed")
                 return
 
